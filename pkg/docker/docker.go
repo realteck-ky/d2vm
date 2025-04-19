@@ -23,17 +23,28 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"strconv"
 
 	"github.com/sirupsen/logrus"
 
 	"go.linka.cloud/d2vm/pkg/exec"
 )
 
-func dockerSocket() string {
-	if runtime.GOOS == "windows" {
-		return "//var/run/docker.sock"
+func DockerSocket(ctx context.Context) (string, error) {
+	o, _, err := CmdOut(ctx, "info")
+	if err != nil {
+		return "", err
 	}
-	return "/var/run/docker.sock"
+	isRootless := strings.Contains(o, "rootless")
+
+	if runtime.GOOS == "windows" {
+		return "//var/run/docker.sock", nil
+	} else if isRootless {
+		uid := os.Getuid()
+		return "/run/user/" + strconv.Itoa(uid) + "/docker.sock", nil
+	} else {
+		return "/var/run/docker.sock", nil
+	}
 }
 
 func FormatImgName(name string) string {
@@ -144,13 +155,19 @@ func RunD2VM(ctx context.Context, image, version, in, out, cmd string, args ...s
 	if interactive {
 		a = append(a, "-i", "-t")
 	}
+
+	socketpath, err := DockerSocket(ctx)
+	if err != nil {
+		return err
+	}
+
 	a = append(a,
 		"--privileged",
 		"-e",
 		// yes... it is kind of a dirty hack
 		fmt.Sprintf("SUDO_UID=%d", os.Getuid()),
 		"-v",
-		fmt.Sprintf("%s:/var/run/docker.sock", dockerSocket()),
+		fmt.Sprintf("%s:/var/run/docker.sock", socketpath),
 		"-v",
 		fmt.Sprintf("%s:/in", in),
 		"-v",

@@ -54,9 +54,14 @@ ifneq ($(TAG),)
 endif
 
 docker-run:
+ifeq ($(docker info | grep -q "rootless"; echo $$?), 0)
+	DOCKER_SOCKET := /run/user/$(UID)/docker.sock
+else
+	DOCKER_SOCKET := /var/run/docker.sock
+endif
 	@docker run --rm -i -t \
 		--privileged \
-		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v $(DOCKER_SOCKET):/var/run/docker.sock \
 		-v $(PWD):/build \
 		-w /build \
 		$(DOCKER_IMAGE) bash
